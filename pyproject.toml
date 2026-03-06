@@ -1,9 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "burp-api-mcp"
-version = "0.1.0"
-description = "Add your description here"
+version = "1.0.0"
+description = "Burp Suite Montoya API MCP Server - Query API documentation via Model Context Protocol"
 readme = "README.md"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
+authors = [
+    {name = "Burp API MCP Contributors"}
+]
+keywords = ["burp-suite", "mcp", "api", "documentation", "security", "fastapi"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Documentation",
+    "Topic :: Utilities",
+]
 dependencies = [
     "aiosqlite>=0.22.1",
     "fastapi>=0.135.1",
@@ -11,3 +31,64 @@ dependencies = [
     "sqlalchemy>=2.0.48",
     "uvicorn>=0.41.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/burp-api-mcp"
+Documentation = "https://github.com/yourusername/burp-api-mcp#readme"
+Repository = "https://github.com/yourusername/burp-api-mcp"
+Issues = "https://github.com/yourusername/burp-api-mcp/issues"
+Changelog = "https://github.com/yourusername/burp-api-mcp/blob/main/CHANGELOG.md"
+
+[project.scripts]
+burp-api-mcp = "burp_api_mcp.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/burp_api_mcp"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/scripts",
+    "/doc",
+    "/burp_api.db",
+    "/README.md",
+    "/README_EN.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/start.bat",
+    "/start.sh",
+    "/start.ps1",
+]
+exclude = [
+    "/.venv",
+    "/__pycache__",
+    "*.pyc",
+    "*.pyo",
+    ".gitignore",
+    ".gitattributes",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+include = '\.pyi?$'
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

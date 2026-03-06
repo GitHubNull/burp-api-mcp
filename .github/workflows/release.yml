@@ -1,0 +1,340 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+
+permissions:
+  contents: write
+
+jobs:
+  validate-version:
+    name: Validate Semantic Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.extract-version.outputs.version }}
+      is_prerelease: ${{ steps.check-prerelease.outputs.is_prerelease }}
+    steps:
+      - name: Extract version from tag
+        id: extract-version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+          echo "Full tag: $TAG"
+
+      - name: Validate semantic version
+        run: |
+          VERSION=${{ steps.extract-version.outputs.version }}
+          
+          # Semantic versioning regex pattern
+          # Supports: 1.0.0, 1.0.0-alpha, 1.0.0-beta.2, 1.0.0-rc.1, 1.0.0+build.123
+          SEMVER_REGEX="^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$"
+          
+          if [[ ! $VERSION =~ $SEMVER_REGEX ]]; then
+            echo "❌ Invalid semantic version: $VERSION"
+            echo "Expected format: MAJOR.MINOR.PATCH[-prerelease][+build]"
+            echo "Examples: 1.0.0, 1.0.0-alpha, 1.0.0-beta.2, 1.0.0-rc.1, 1.0.0+build.123"
+            exit 1
+          fi
+          
+          echo "✅ Valid semantic version: $VERSION"
+
+      - name: Check if pre-release
+        id: check-prerelease
+        run: |
+          VERSION=${{ steps.extract-version.outputs.version }}
+          
+          # Check for pre-release identifiers
+          if [[ $VERSION =~ -(alpha|beta|rc|dev|preview|a|b)[.0-9]*$ ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+            echo "✅ Pre-release version detected"
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+            echo "✅ Stable release version"
+          fi
+
+  build-wheel:
+    name: Build Python Wheel
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Update version in pyproject.toml
+        run: |
+          VERSION=${{ needs.validate-version.outputs.version }}
+          sed -i "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" pyproject.toml
+          echo "Updated version to $VERSION"
+
+      - name: Build wheel
+        run: |
+          uv pip install build
+          uv run python -m build --wheel
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-package
+          path: dist/*.whl
+          retention-days: 1
+
+  build-zip:
+    name: Build Complete ZIP Package
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Create distribution directory
+        run: |
+          VERSION=${{ needs.validate-version.outputs.version }}
+          DIST_DIR="burp-api-mcp-${VERSION}"
+          mkdir -p "dist/${DIST_DIR}"
+          
+          # Copy all project files
+          cp -r src "dist/${DIST_DIR}/"
+          cp -r scripts "dist/${DIST_DIR}/"
+          cp -r doc "dist/${DIST_DIR}/"
+          cp burp_api.db "dist/${DIST_DIR}/"
+          cp pyproject.toml "dist/${DIST_DIR}/"
+          cp .python-version "dist/${DIST_DIR}/"
+          cp .gitignore "dist/${DIST_DIR}/"
+          cp README.md "dist/${DIST_DIR}/"
+          cp README_EN.md "dist/${DIST_DIR}/"
+          cp LICENSE "dist/${DIST_DIR}/"
+          cp start.bat "dist/${DIST_DIR}/"
+          cp start.sh "dist/${DIST_DIR}/"
+          cp start.ps1 "dist/${DIST_DIR}/"
+          
+          # Create zip archive
+          cd dist
+          zip -r "burp-api-mcp-${VERSION}.zip" "${DIST_DIR}/"
+          
+          echo "✅ Created ZIP package: burp-api-mcp-${VERSION}.zip"
+
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zip-package
+          path: dist/*.zip
+          retention-days: 1
+
+  extract-changelog:
+    name: Extract Changelog
+    needs: validate-version
+    runs-on: ubuntu-latest
+    outputs:
+      changelog_body: ${{ steps.extract.outputs.body }}
+      changelog_found: ${{ steps.extract.outputs.found }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract changelog for version
+        id: extract
+        run: |
+          VERSION=${{ needs.validate-version.outputs.version }}
+          CHANGELOG_FILE="CHANGELOG.md"
+          
+          if [[ ! -f "$CHANGELOG_FILE" ]]; then
+            echo "⚠️ CHANGELOG.md not found"
+            echo "found=false" >> $GITHUB_OUTPUT
+            echo "body=No changelog found for version $VERSION" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Extract changelog section for this version
+          # Look for version header (## [version] or ## version)
+          BODY=$(awk "/^## \[?$VERSION\]?/{flag=1; next} /^## /{flag=0} flag" "$CHANGELOG_FILE" | head -n -1)
+          
+          if [[ -z "$BODY" ]]; then
+            echo "⚠️ No changelog entry found for version $VERSION"
+            echo "found=false" >> $GITHUB_OUTPUT
+            echo "body=No changelog entry found for version $VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Found changelog for version $VERSION"
+            echo "found=true" >> $GITHUB_OUTPUT
+            
+            # Escape special characters for GitHub Actions
+            BODY="${BODY//'%'/'%25'}"
+            BODY="${BODY//$'\n'/'%0A'}"
+            BODY="${BODY//$'\r'/'%0D'}"
+            
+            echo "body=$BODY" >> $GITHUB_OUTPUT
+          fi
+
+  create-release:
+    name: Create GitHub Release
+    needs: 
+      - validate-version
+      - build-wheel
+      - build-zip
+      - extract-changelog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wheel-package
+          path: dist/wheel/
+
+      - name: Download ZIP artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: zip-package
+          path: dist/zip/
+
+      - name: Prepare release body
+        id: prepare-body
+        run: |
+          VERSION=${{ needs.validate-version.outputs.version }}
+          IS_PRERELEASE=${{ needs.validate-version.outputs.is_prerelease }}
+          CHANGELOG_BODY="${{ needs.extract-changelog.outputs.changelog_body }}"
+          
+          # Decode changelog body
+          CHANGELOG_BODY="${CHANGELOG_BODY//'%0D'/$'\r'}"
+          CHANGELOG_BODY="${CHANGELOG_BODY//'%0A'/$'\n'}"
+          CHANGELOG_BODY="${CHANGELOG_BODY//'%25'/'%'}"
+          
+          # Build release body
+          RELEASE_BODY="## What's Changed
+
+          $CHANGELOG_BODY
+
+          ## 📦 Installation
+
+          ### Option 1: Python Wheel (Recommended)
+          \`\`\`bash
+          pip install burp-api-mcp-${VERSION}-py3-none-any.whl
+          \`\`\`
+
+          ### Option 2: ZIP Package
+          Download \`burp-api-mcp-${VERSION}.zip\` and extract to your preferred location.
+
+          ## 🚀 Quick Start
+
+          \`\`\`bash
+          # Using launch scripts
+          ./start.sh        # Linux/Mac
+          start.bat         # Windows CMD
+          .\\start.ps1      # PowerShell
+          \`\`\`
+
+          ## 📋 Assets
+
+          - **Wheel Package**: Python wheel for pip install
+          - **ZIP Package**: Complete package with database and documentation
+          - **Source Code**: GitHub auto-generated source archives
+
+          ---
+          **Full Changelog**: [CHANGELOG.md](./CHANGELOG.md)"
+
+          # Escape for GitHub Actions
+          RELEASE_BODY="${RELEASE_BODY//'%'/'%25'}"
+          RELEASE_BODY="${RELEASE_BODY//$'\n'/'%0A'}"
+          RELEASE_BODY="${RELEASE_BODY//$'\r'/'%0D'}"
+          
+          echo "body=$RELEASE_BODY" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release v${{ needs.validate-version.outputs.version }}
+          body: ${{ steps.prepare-body.outputs.body }}
+          prerelease: ${{ needs.validate-version.outputs.is_prerelease == 'true' }}
+          files: |
+            dist/wheel/*.whl
+            dist/zip/*.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-pypi:
+    name: Publish to PyPI (Optional)
+    needs: 
+      - validate-version
+      - build-wheel
+      - create-release
+    runs-on: ubuntu-latest
+    if: ${{ needs.validate-version.outputs.is_prerelease == 'false' && github.event_name == 'push' }}
+    environment:
+      name: pypi
+      url: https://pypi.org/p/burp-api-mcp
+    permissions:
+      id-token: write
+    steps:
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wheel-package
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # Uncomment below to enable PyPI publishing (requires PYPI_API_TOKEN secret)
+        # with:
+        #   password: ${{ secrets.PYPI_API_TOKEN }}
+
+  update-changelog:
+    name: Update CHANGELOG Link
+    needs: 
+      - validate-version
+      - create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add release link to changelog
+        run: |
+          VERSION=${{ needs.validate-version.outputs.version }}
+          TAG="v${VERSION}"
+          
+          # Check if link already exists
+          if ! grep -q "\[${TAG}\]" CHANGELOG.md; then
+            # Add link reference at the end of file
+            echo "" >> CHANGELOG.md
+            echo "[${TAG}]: https://github.com/${{ github.repository }}/releases/tag/${TAG}" >> CHANGELOG.md
+            
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git add CHANGELOG.md
+            git commit -m "docs: add release link for ${TAG} [skip ci]" || true
+            git push || true
+          fi
