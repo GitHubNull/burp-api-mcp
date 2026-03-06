@@ -89,8 +89,8 @@ jobs:
 
       - name: Build wheel
         run: |
-          uv pip install build
-          uv run python -m build --wheel
+          uv pip install --system build
+          python -m build --wheel
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
