@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Future features and improvements
 
+## [1.0.1] - 2024-03-06
+
+### Fixed
+- Fixed virtual environment creation issue in GitHub Actions CI workflow
+- Ensured wheel package builds correctly in CI environment
+- Added `uv venv` step before installing build tools in release workflow
+
 ## [1.0.0] - 2024-03-06
 
 ### Added
@@ -60,5 +67,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Java source code parser for API extraction
 - Git LFS support for database file
 
-[Unreleased]: https://github.com/yourusername/burp-api-mcp/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/yourusername/burp-api-mcp/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/yourusername/burp-api-mcp/releases/tag/v1.0.1
 [1.0.0]: https://github.com/yourusername/burp-api-mcp/releases/tag/v1.0.0
