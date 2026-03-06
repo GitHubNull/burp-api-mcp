@@ -83,8 +83,9 @@ jobs:
           sed -i "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" pyproject.toml
           echo "Updated version to $VERSION"
 
-      - name: Build wheel
+      - name: Create virtual environment and build wheel
         run: |
+          uv venv
           uv pip install build
           uv run python -m build --wheel
 
