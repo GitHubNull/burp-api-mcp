@@ -15,7 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fixed virtual environment creation issue in GitHub Actions CI workflow
 - Ensured wheel package builds correctly in CI environment
-- Added `uv venv` step before installing build tools in release workflow
+- Used `activate-environment: true` in setup-uv action for proper venv handling
+- Added missing `actions/checkout@v4` to validate-version job
+- Followed setup-uv official documentation best practices
 
 ## [1.0.0] - 2024-03-06
 
